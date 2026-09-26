@@ -24,16 +24,17 @@ export interface Settings {
   name: string; avatar: string; theme: 'light' | 'dark'; pomodoro: number; breakMinutes: number;
   waterGoal: number; notifications: boolean; environment: string; volume: number;
 }
+export interface MusicTrack { id: string; name: string; type: string; dataUrl: string; }
 export interface AppData {
   tasks: Task[]; activities: Activity[]; sessions: FocusSession[]; notes: StudyNote[];
-  exercises: Exercise[]; projects: Project[]; water: Record<string, number>; settings: Settings; timer?: TimerState;
+  exercises: Exercise[]; projects: Project[]; water: Record<string, number>; musicTracks: MusicTrack[]; settings: Settings; timer?: TimerState;
 }
 
 const KEY_PREFIX = 'focusflow-data-v1';
 const today = () => new Date().toISOString().slice(0, 10);
 const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const defaultData: AppData = {
-  tasks: [], activities: [], sessions: [], notes: [], exercises: [], projects: [], water: {},
+  tasks: [], activities: [], sessions: [], notes: [], exercises: [], projects: [], water: {}, musicTracks: [],
   settings: { name: 'Your name', avatar: 'YN', theme: 'light', pomodoro: 25, breakMinutes: 5, waterGoal: 8, notifications: false, environment: 'Rain on glass', volume: 55 },
 };
 
@@ -68,6 +69,8 @@ interface Store extends AppData {
   addProject: (project: Omit<Project, 'id'>) => void;
   updateProject: (id: string, patch: Partial<Project>) => void;
   deleteProject: (id: string) => void;
+  addMusicTrack: (track: Omit<MusicTrack, 'id'>) => void;
+  deleteMusicTrack: (id: string) => void;
   setWater: (date: string, count: number) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   startTimer: (taskId?: string, mode?: 'focus' | 'break' | 'stopwatch') => void;
@@ -107,6 +110,8 @@ export function DataProvider({ children, userId, initialName }: { children: Reac
       addProject: (project) => patch((d) => { d.projects = [{ ...project, id: uid('project') }, ...d.projects]; }),
       updateProject: (id, change) => patch((d) => { d.projects = d.projects.map((p) => p.id === id ? { ...p, ...change } : p); }),
       deleteProject: (id) => patch((d) => { d.projects = d.projects.filter((p) => p.id !== id); d.tasks = d.tasks.map((t) => t.projectId === id ? { ...t, projectId: undefined } : t); }),
+      addMusicTrack: (track) => patch((d) => { d.musicTracks = [...d.musicTracks, { ...track, id: uid('music') }]; }),
+      deleteMusicTrack: (id) => patch((d) => { d.musicTracks = d.musicTracks.filter((track) => track.id !== id); }),
       setWater: (date, count) => patch((d) => { d.water = { ...d.water, [date]: Math.max(0, count) }; }),
       updateSettings: (change) => patch((d) => { d.settings = { ...d.settings, ...change }; }),
       startTimer: (taskId, mode = 'focus') => patch((d) => {

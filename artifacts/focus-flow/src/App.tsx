@@ -2,9 +2,9 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, t
 import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser } from '@clerk/react';
 import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
-import { CalendarDays, Check, ChevronLeft, ChevronRight, Circle, Clock3, Droplets, ExternalLink, FolderKanban, GripVertical, History, LayoutDashboard, ListChecks, Moon, MoreHorizontal, Music2, Pause, Pencil, Play, Plus, RotateCcw, Search, Settings, Sparkles, Sun, Target, Trash2, Trophy, Volume2, X, Zap } from 'lucide-react';
+import { Blocks, CalendarDays, Check, ChevronLeft, ChevronRight, Circle, Clock3, Droplets, ExternalLink, FolderKanban, GripVertical, History, LayoutDashboard, ListChecks, Moon, MoreHorizontal, Music2, Pause, Pencil, Play, Plus, RotateCcw, Search, Settings, Sparkles, Sun, Target, Trash2, Trophy, Upload, Volume2, X, Zap } from 'lucide-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
-import { DataProvider, categories, dateKey, formatDate, initials, useData, type Activity, type Category, type Exercise, type Priority, type Project, type ProjectStatus, type Task } from '@/lib/store';
+import { DataProvider, categories, dateKey, formatDate, initials, useData, type Activity, type Category, type Exercise, type MusicTrack, type Priority, type Project, type ProjectStatus, type Task } from '@/lib/store';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
@@ -66,6 +66,7 @@ const clerkAppearance = {
 const nav = [
   { href: '/', label: 'Today', icon: LayoutDashboard },
   { href: '/inbox', label: 'Task inbox', icon: ListChecks },
+  { href: '/buildup', label: 'Buildup', icon: Blocks },
   { href: '/schedule', label: 'Schedule', icon: CalendarDays },
   { href: '/study', label: 'Focus room', icon: Target },
   { href: '/workout', label: 'Workout', icon: Zap },
@@ -203,8 +204,8 @@ function Shell() {
         </div>
        <div className="top-actions"><Link href="/settings" className="icon-button" aria-label="Settings" data-testid="button-top-settings"><Settings size={16} /></Link><Link href="/profile" className="soft-button" data-testid="button-top-profile"><span className="avatar" style={{ width: 22, height: 22, fontSize: 9 }}>{initials(data.settings.name)}</span>{data.settings.name}</Link><LogoutButton /></div>
       </header>
-      <div onClick={() => searchOpen && setSearchOpen(false)}><Switch>
-        <Route path="/" component={Dashboard} /><Route path="/dashboard" component={Dashboard} /><Route path="/inbox" component={Inbox} /><Route path="/schedule" component={Schedule} /><Route path="/study" component={Study} /><Route path="/workout" component={Workout} /><Route path="/work" component={Work} /><Route path="/analytics" component={Analytics} /><Route path="/history" component={HistoryPage} /><Route path="/profile" component={Profile} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} />
+       <div onClick={() => searchOpen && setSearchOpen(false)}><Switch>
+         <Route path="/" component={Dashboard} /><Route path="/dashboard" component={Dashboard} /><Route path="/inbox" component={Inbox} /><Route path="/buildup" component={Buildup} /><Route path="/schedule" component={Schedule} /><Route path="/study" component={Study} /><Route path="/workout" component={Workout} /><Route path="/work" component={Work} /><Route path="/analytics" component={Analytics} /><Route path="/history" component={HistoryPage} /><Route path="/profile" component={Profile} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} />
       </Switch></div>
     </main>
     <MusicDock />
@@ -218,13 +219,25 @@ function LogoutButton() {
 }
 
 function MusicDock() {
+  const data = useData();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [unavailable, setUnavailable] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const [trackId, setTrackId] = useState(data.musicTracks[0]?.id ?? 'default');
+  const customTrack = data.musicTracks.find((track) => track.id === trackId) ?? data.musicTracks[0];
+  const source = customTrack?.dataUrl ?? 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+  useEffect(() => {
+    if (data.musicTracks.length && trackId === 'default') setTrackId(data.musicTracks[0].id);
+    if (trackId !== 'default' && !data.musicTracks.some((track) => track.id === trackId)) setTrackId(data.musicTracks[0]?.id ?? 'default');
+  }, [data.musicTracks, trackId]);
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = data.settings.volume / 100;
+  }, [data.settings.volume, source]);
   return <div className="music-dock" data-testid="music-player">
     <Music2 size={17} color="var(--coral)" />
-    <div><strong>{unavailable ? 'Music unavailable' : playing ? 'Now playing' : 'Focus soundtrack'}</strong><span>{unavailable ? 'Check your connection' : 'SoundHelix · free example track'}</span></div>
-    <audio ref={audioRef} controls preload="none" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onError={() => { setUnavailable(true); setPlaying(false); }} aria-label="Focus soundtrack"><source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg" /></audio>
+    <div className="music-dock-copy"><strong>{unavailable ? 'Music unavailable' : playing ? 'Now playing' : customTrack?.name ?? 'Focus soundtrack'}</strong><span>{unavailable ? 'Check the file or your connection' : customTrack ? 'From your device' : 'SoundHelix · free example track'}</span></div>
+    {data.musicTracks.length > 1 && <select className="music-track-select" value={customTrack?.id ?? 'default'} onChange={(event) => { setUnavailable(false); setPlaying(false); setTrackId(event.target.value); }} aria-label="Choose music track" data-testid="select-music-track"><option value="default">Focus soundtrack</option>{data.musicTracks.map((track) => <option key={track.id} value={track.id}>{track.name}</option>)}</select>}
+    <audio key={source} ref={audioRef} controls preload="none" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onError={() => { setUnavailable(true); setPlaying(false); }} aria-label="Focus soundtrack"><source src={source} type={customTrack?.type || 'audio/mpeg'} /></audio>
   </div>;
 }
 
@@ -267,6 +280,58 @@ function Dashboard() {
 function Inbox() {
   const data = useData(); const [modal, setModal] = useState<Task | 'new' | null>(null); const [filter, setFilter] = useState('All'); const tasks = data.tasks.filter((t) => filter === 'All' || t.category === filter);
   return <div className="page"><PageHeading eyebrow="Task inbox" title="Everything has a place." description="Drag a sticky to Schedule, or work straight from here." action={<button className="primary-button" onClick={() => setModal('new')} data-testid="button-inbox-add"><Plus size={15} /> New task</button>} /><div className="date-nav" style={{ marginBottom: 19 }}>{['All', ...categories].map((item) => <button key={item} className={cx(item === filter ? 'primary-button' : 'soft-button')} onClick={() => setFilter(item)} data-testid={`button-filter-${item.toLowerCase()}`}>{item}</button>)}</div>{tasks.length ? <div className="task-board">{tasks.map((task) => <TaskCard key={task.id} task={task} onEdit={setModal} />)}</div> : <Empty icon={ListChecks} title={filter === 'All' ? 'Start with one clear thing' : `No ${filter.toLowerCase()} tasks yet`} text="Tasks you add here stay with you across the whole app." action={<button className="primary-button" onClick={() => setModal('new')} data-testid="button-inbox-empty-add"><Plus size={14} /> Add a task</button>} />}{modal && <TaskForm initial={modal === 'new' ? undefined : modal} onClose={() => setModal(null)} />}</div>;
+}
+
+function Buildup() {
+  const data = useData();
+  const [date, setDate] = useState(dateKey());
+  const [modal, setModal] = useState<Task | 'new' | null>(null);
+  const [dragOverStart, setDragOverStart] = useState<string | null>(null);
+  const [dropMessage, setDropMessage] = useState('');
+  const [pendingDrop, setPendingDrop] = useState<{ task?: Task; activity?: Activity; start: string; overlaps: Activity[] } | null>(null);
+  const activities = data.activities.filter((item) => item.date === date).sort((a, b) => a.start.localeCompare(b.start));
+  const looseTasks = data.tasks.filter((task) => !task.done && !activities.some((activity) => activity.taskId === task.id));
+  const hours = Array.from({ length: 15 }, (_, index) => index + 7);
+  const announce = (message: string) => { setDropMessage(message); window.setTimeout(() => setDropMessage(''), 2400); };
+  const placeTask = (task: Task, start: string, replace = false) => {
+    if (replace) (pendingDrop?.overlaps ?? []).forEach((item) => data.deleteActivity(item.id));
+    data.addActivity({ title: task.title, taskId: task.id, category: task.category, date, start, duration: task.estimate });
+    announce(`Placed "${task.title}" at ${start}.`);
+    setPendingDrop(null);
+  };
+  const moveActivity = (activity: Activity, start: string, replace = false) => {
+    if (replace) (pendingDrop?.overlaps ?? []).forEach((item) => data.deleteActivity(item.id));
+    data.updateActivity(activity.id, { date, start });
+    announce(`Moved "${activity.title}" to ${start}.`);
+    setPendingDrop(null);
+  };
+  const handleDrop = (event: DragEvent, start: string) => {
+    event.preventDefault();
+    const activityId = event.dataTransfer.getData('activityId');
+    const taskId = event.dataTransfer.getData('taskId');
+    const activity = activityId ? data.activities.find((item) => item.id === activityId) : undefined;
+    const task = taskId ? data.tasks.find((item) => item.id === taskId) : undefined;
+    if (activity) {
+      const overlaps = findOverlaps(data.activities, date, start, activity.duration, activity.id);
+      if (overlaps.length) setPendingDrop({ activity, start, overlaps }); else moveActivity(activity, start);
+    } else if (task) {
+      const overlaps = findOverlaps(data.activities, date, start, task.estimate);
+      if (overlaps.length) setPendingDrop({ task, start, overlaps }); else placeTask(task, start);
+    }
+    setDragOverStart(null);
+  };
+  const shiftDate = (amount: number) => { const next = new Date(`${date}T12:00:00`); next.setDate(next.getDate() + amount); setDate(next.toISOString().slice(0, 10)); };
+  return <div className="page">
+    <PageHeading eyebrow="Buildup" title="Build a day that can happen." description="Turn loose tasks into movable blocks, then give each one a realistic place." action={<button className="primary-button" onClick={() => setModal('new')} data-testid="button-buildup-add-task"><Plus size={15} /> Add task block</button>} />
+    <div className="date-nav buildup-date-nav"><button className="icon-button" onClick={() => shiftDate(-1)} aria-label="Previous buildup day" data-testid="button-buildup-previous-day"><ChevronLeft size={16} /></button><button className="date-pill" onClick={() => setDate(dateKey())} data-testid="button-buildup-date"><CalendarDays size={14} />{dateLabel(date)}</button><button className="icon-button" onClick={() => shiftDate(1)} aria-label="Next buildup day" data-testid="button-buildup-next-day"><ChevronRight size={16} /></button>{date !== dateKey() && <button className="soft-button" onClick={() => setDate(dateKey())}>Today</button>}</div>
+    {dropMessage && <div className="toast">{dropMessage}</div>}
+    <div className="buildup-layout">
+      <section className="card buildup-blocks"><div className="card-title"><div><div className="eyebrow">Task blocks</div><h2 className="section-title">What can move today</h2></div><Blocks size={18} color="var(--coral)" /></div><p className="tiny buildup-help">Drag a block into a time slot. Blocks already on the chart can be dragged again to move them.</p>{looseTasks.length ? <div className="buildup-block-list">{looseTasks.map((task) => <div className={cx('buildup-block', categoryClass(task.category))} draggable onDragStart={(event) => { event.dataTransfer.setData('taskId', task.id); event.dataTransfer.effectAllowed = 'move'; }} key={task.id} data-testid={`buildup-task-${task.id}`}><GripVertical size={14} /><div><strong>{task.title}</strong><span>{task.category} · {task.estimate}m</span></div><span className="priority-spacer" /></div>)}</div> : <Empty icon={Check} title="Your blocks are placed" text="Add another task or move a planned block to a new time." action={<button className="soft-button" onClick={() => setModal('new')}><Plus size={13} /> Add block</button>} />}</section>
+      <section className="buildup-chart-wrap"><div className="buildup-chart-header"><div><div className="eyebrow">Time chart</div><h2 className="section-title">{activities.length} blocks planned</h2></div><span className="tag">{activities.reduce((sum, item) => sum + item.duration, 0)}m planned</span></div><div className="buildup-timeline">{hours.map((hour) => { const start = `${String(hour).padStart(2, '0')}:00`; const items = activities.filter((activity) => activity.start.slice(0, 2) === String(hour).padStart(2, '0')); return <div className="buildup-time-row" key={hour}><div className="time-label">{start}</div><div className={cx('buildup-time-slot', dragOverStart === start && 'drop-target')} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; setDragOverStart(start); }} onDragEnter={() => setDragOverStart(start)} onDragLeave={() => setDragOverStart(null)} onDrop={(event) => handleDrop(event, start)}>{items.map((item) => <div className={cx('buildup-planned-block', categoryClass(item.category))} draggable onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.setData('activityId', item.id); event.dataTransfer.effectAllowed = 'move'; }} onDragEnd={() => setDragOverStart(null)} key={item.id} data-testid={`buildup-activity-${item.id}`}><GripVertical size={14} /><div><strong>{item.title}</strong><span>{item.duration}m · {item.category}</span></div><button className="icon-button" onClick={(event) => { event.stopPropagation(); data.deleteActivity(item.id); }} aria-label={`Remove ${item.title}`}><Trash2 size={12} /></button></div>)}</div></div>; })}</div></section>
+    </div>
+    {modal && <TaskForm initial={modal === 'new' ? undefined : modal} onClose={() => setModal(null)} />}
+    {pendingDrop && <ConflictDialog overlaps={pendingDrop.overlaps} onChooseAnother={() => setPendingDrop(null)} onReplace={() => pendingDrop.activity ? moveActivity(pendingDrop.activity, pendingDrop.start, true) : pendingDrop.task ? placeTask(pendingDrop.task, pendingDrop.start, true) : setPendingDrop(null)} onCancel={() => setPendingDrop(null)} />}
+  </div>;
 }
 
 function Schedule() {
@@ -342,7 +407,33 @@ function HistoryPage() {
 
 function Profile() { const data = useData(); const [name, setName] = useState(data.settings.name); const [saved, setSaved] = useState(false); const save = (e: FormEvent) => { e.preventDefault(); if (!name.trim()) return; data.updateSettings({ name: name.trim(), avatar: initials(name) }); setSaved(true); window.setTimeout(() => setSaved(false), 1800); }; return <div className="page"><PageHeading eyebrow="Profile" title="Make it yours." description="A small identity for a very personal practice." /><div className="grid grid-2"><section className="card"><div className="card-title"><div><div className="eyebrow">Your details</div><h2 className="section-title">How should FocusFlow greet you?</h2></div><span className="avatar" style={{ width: 50, height: 50, fontSize: 16 }}>{initials(name)}</span></div><form onSubmit={save}><Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} data-testid="input-profile-name" /></Field><div className="modal-footer" style={{ marginTop: 18 }}><button className="primary-button" type="submit" data-testid="button-save-profile">Save profile</button></div>{saved && <p className="tiny" style={{ color: 'var(--mint-ink)' }}>Saved locally.</p>}</form></section><section className="card"><div className="eyebrow">Your footprint</div><h2 className="section-title" style={{ margin: '7px 0 18px' }}>Built from your days</h2><div className="stat-line" style={{ marginBottom: 15 }}><span className="muted">Tasks captured</span><strong>{data.tasks.length}</strong></div><div className="stat-line" style={{ marginBottom: 15 }}><span className="muted">Focus sessions</span><strong>{data.sessions.length}</strong></div><div className="stat-line"><span className="muted">Projects</span><strong>{data.projects.length}</strong></div></section></div></div>; }
 
-function SettingsPage() { const data = useData(); const [confirm, setConfirm] = useState(false); const update = (patch: Parameters<typeof data.updateSettings>[0]) => data.updateSettings(patch); const exportData = () => { const blob = new Blob([JSON.stringify({ tasks: data.tasks, activities: data.activities, sessions: data.sessions, notes: data.notes, exercises: data.exercises, projects: data.projects, water: data.water, settings: data.settings }, null, 2)], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `focusflow-${dateKey()}.json`; a.click(); URL.revokeObjectURL(url); }; return <div className="page"><PageHeading eyebrow="Settings" title="Set the conditions." description="Preferences are saved in this browser, with no account or tracking." /><div className="grid grid-2"><section className="card"><div className="eyebrow">Preferences</div><div className="settings-group"><div className="setting-row"><div><strong>Theme</strong><p>Choose the atmosphere for your planning space.</p></div><div className="setting-control"><button className="soft-button" onClick={() => update({ theme: data.settings.theme === 'light' ? 'dark' : 'light' })} data-testid="button-toggle-theme">{data.settings.theme === 'light' ? <Sun size={14} /> : <Moon size={14} />}{data.settings.theme === 'light' ? 'Light' : 'Dark'}</button></div></div><div className="setting-row"><div><strong>Focus minutes</strong><p>Length of a new focus session.</p></div><div className="setting-control"><input type="number" min="1" max="180" value={data.settings.pomodoro} onChange={(e) => update({ pomodoro: Math.max(1, Number(e.target.value)) })} style={{ width: 70, padding: 8, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--card)' }} data-testid="input-pomodoro" /></div></div><div className="setting-row"><div><strong>Break minutes</strong><p>Reset time between sessions.</p></div><div className="setting-control"><input type="number" min="1" max="60" value={data.settings.breakMinutes} onChange={(e) => update({ breakMinutes: Math.max(1, Number(e.target.value)) })} style={{ width: 70, padding: 8, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--card)' }} data-testid="input-break-minutes" /></div></div><div className="setting-row"><div><strong>Daily water goal</strong><p>Servings you want to make space for.</p></div><div className="setting-control"><input type="number" min="1" max="30" value={data.settings.waterGoal} onChange={(e) => update({ waterGoal: Math.max(1, Number(e.target.value)) })} style={{ width: 70, padding: 8, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--card)' }} data-testid="input-water-goal" /></div></div><div className="setting-row"><div><strong>Notifications</strong><p>Ask for permission only when you opt in.</p></div><button className={cx('toggle', data.settings.notifications && 'on')} onClick={async () => { if (!data.settings.notifications && 'Notification' in window && Notification.permission === 'default') await Notification.requestPermission(); update({ notifications: !data.settings.notifications }); }} aria-label="Toggle notifications" data-testid="button-toggle-notifications"><span /></button></div><div className="setting-row"><div><strong>Music volume</strong><p>The player stays quiet until a source is available.</p></div><div className="setting-control" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><Volume2 size={14} color="var(--ink-soft)" /><input type="range" min="0" max="100" value={data.settings.volume} onChange={(e) => update({ volume: Number(e.target.value) })} data-testid="input-volume" /></div></div></div></section><section className="grid" style={{ alignContent: 'start' }}><div className="card"><div className="eyebrow">Your data</div><h2 className="section-title" style={{ margin: '7px 0 8px' }}>Portable by default</h2><p className="tiny" style={{ marginBottom: 17 }}>Export a readable JSON copy any time. Nothing leaves this browser unless you move it yourself.</p><button className="soft-button" onClick={exportData} data-testid="button-export-data">Export my data</button></div><div className="card"><div className="eyebrow">Start over</div><h2 className="section-title" style={{ margin: '7px 0 8px' }}>Reset local data</h2><p className="tiny" style={{ marginBottom: 17 }}>This permanently removes your tasks, sessions, projects, and preferences from this browser.</p>{confirm ? <div style={{ display: 'flex', gap: 8 }}><button className="danger-button" onClick={() => data.resetAll()} data-testid="button-confirm-reset">Yes, reset everything</button><button className="soft-button" onClick={() => setConfirm(false)} data-testid="button-cancel-reset">Cancel</button></div> : <button className="danger-button" onClick={() => setConfirm(true)} data-testid="button-reset-data">Reset local data</button>}</div></section></div></div>; }
+function MusicLibrary() {
+  const data = useData();
+  const [error, setError] = useState('');
+  const addFile = (file: File) => {
+    setError('');
+    if (!file.type.startsWith('audio/')) return setError('Choose an audio file.');
+    if (file.size > 4 * 1024 * 1024) return setError('Keep device tracks under 4 MB so your offline library stays reliable.');
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') data.addMusicTrack({ name: file.name.replace(/\.[^/.]+$/, ''), type: file.type, dataUrl: reader.result });
+    };
+    reader.onerror = () => setError('That file could not be added. Try another audio file.');
+    reader.readAsDataURL(file);
+  };
+  return <div className="card music-library"><div className="card-title"><div><div className="eyebrow">Add music</div><h2 className="section-title">Your own soundtrack</h2></div><Music2 size={18} color="var(--coral)" /></div><p className="tiny" style={{ marginBottom: 15 }}>Add small audio files from this device. They stay in your private browser library.</p><label className="soft-button music-upload-button"><Upload size={14} /> Choose audio file<input type="file" accept="audio/*" onChange={(event) => { const file = event.target.files?.[0]; if (file) addFile(file); event.currentTarget.value = ''; }} data-testid="input-add-music" /></label>{error && <p className="error-text">{error}</p>}{data.musicTracks.length ? <div className="music-library-list">{data.musicTracks.map((track) => <div className="music-library-row" key={track.id}><Music2 size={14} color="var(--coral)" /><span>{track.name}</span><button className="icon-button" onClick={() => data.deleteMusicTrack(track.id)} aria-label={`Remove ${track.name}`} data-testid={`button-remove-music-${track.id}`}><Trash2 size={13} /></button></div>)}</div> : <p className="tiny music-library-empty">No device tracks added yet.</p>}</div>;
+}
+
+function SettingsPage() {
+  const data = useData();
+  const [confirm, setConfirm] = useState(false);
+  const update = (patch: Parameters<typeof data.updateSettings>[0]) => data.updateSettings(patch);
+  const exportData = () => {
+    const blob = new Blob([JSON.stringify({ tasks: data.tasks, activities: data.activities, sessions: data.sessions, notes: data.notes, exercises: data.exercises, projects: data.projects, water: data.water, musicTracks: data.musicTracks, settings: data.settings }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `focusflow-${dateKey()}.json`; a.click(); URL.revokeObjectURL(url);
+  };
+  return <div className="page"><PageHeading eyebrow="Settings" title="Set the conditions." description="Preferences and music stay private in this browser." /><div className="grid grid-2"><section className="card"><div className="eyebrow">Preferences</div><div className="settings-group"><div className="setting-row"><div><strong>Theme</strong><p>Choose the atmosphere for your planning space.</p></div><div className="setting-control"><button className="soft-button" onClick={() => update({ theme: data.settings.theme === 'light' ? 'dark' : 'light' })} data-testid="button-toggle-theme">{data.settings.theme === 'light' ? <Sun size={14} /> : <Moon size={14} />}{data.settings.theme === 'light' ? 'Light' : 'Dark'}</button></div></div><div className="setting-row"><div><strong>Focus minutes</strong><p>Length of a new focus session.</p></div><div className="setting-control"><input type="number" min="1" max="180" value={data.settings.pomodoro} onChange={(e) => update({ pomodoro: Math.max(1, Number(e.target.value)) })} style={{ width: 70, padding: 8, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--card)' }} data-testid="input-pomodoro" /></div></div><div className="setting-row"><div><strong>Break minutes</strong><p>Reset time between sessions.</p></div><div className="setting-control"><input type="number" min="1" max="60" value={data.settings.breakMinutes} onChange={(e) => update({ breakMinutes: Math.max(1, Number(e.target.value)) })} style={{ width: 70, padding: 8, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--card)' }} data-testid="input-break-minutes" /></div></div><div className="setting-row"><div><strong>Daily water goal</strong><p>Servings you want to make space for.</p></div><div className="setting-control"><input type="number" min="1" max="30" value={data.settings.waterGoal} onChange={(e) => update({ waterGoal: Math.max(1, Number(e.target.value)) })} style={{ width: 70, padding: 8, border: '1px solid var(--line)', borderRadius: 8, background: 'var(--card)' }} data-testid="input-water-goal" /></div></div><div className="setting-row"><div><strong>Notifications</strong><p>Ask for permission only when you opt in.</p></div><button className={cx('toggle', data.settings.notifications && 'on')} onClick={async () => { if (!data.settings.notifications && 'Notification' in window && Notification.permission === 'default') await Notification.requestPermission(); update({ notifications: !data.settings.notifications }); }} aria-label="Toggle notifications" data-testid="button-toggle-notifications"><span /></button></div><div className="setting-row"><div><strong>Music volume</strong><p>The player stays quiet until a source is available.</p></div><div className="setting-control" style={{ display: 'flex', alignItems: 'center', gap: 7 }}><Volume2 size={14} color="var(--ink-soft)" /><input type="range" min="0" max="100" value={data.settings.volume} onChange={(e) => update({ volume: Number(e.target.value) })} data-testid="input-volume" /></div></div></div></section><section className="grid" style={{ alignContent: 'start' }}><MusicLibrary /><div className="card"><div className="eyebrow">Your data</div><h2 className="section-title" style={{ margin: '7px 0 8px' }}>Portable by default</h2><p className="tiny" style={{ marginBottom: 17 }}>Export a readable JSON copy any time. Nothing leaves this browser unless you move it yourself.</p><button className="soft-button" onClick={exportData} data-testid="button-export-data">Export my data</button></div><div className="card"><div className="eyebrow">Start over</div><h2 className="section-title" style={{ margin: '7px 0 8px' }}>Reset local data</h2><p className="tiny" style={{ marginBottom: 17 }}>This permanently removes your tasks, sessions, projects, and preferences from this browser.</p>{confirm ? <div style={{ display: 'flex', gap: 8 }}><button className="danger-button" onClick={() => data.resetAll()} data-testid="button-confirm-reset">Yes, reset everything</button><button className="soft-button" onClick={() => setConfirm(false)} data-testid="button-cancel-reset">Cancel</button></div> : <button className="danger-button" onClick={() => setConfirm(true)} data-testid="button-reset-data">Reset local data</button>}</div></section></div></div>;
+}
 
 function NotFound() { return <div className="page"><Empty icon={Search} title="This page wandered off" text="Use the navigation to find your way back into the flow." action={<Link href="/" className="primary-button" data-testid="link-not-found-home">Back to today</Link>} /></div>; }
 
