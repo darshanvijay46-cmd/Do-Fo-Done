@@ -29,7 +29,7 @@ export interface AppData {
   exercises: Exercise[]; projects: Project[]; water: Record<string, number>; settings: Settings; timer?: TimerState;
 }
 
-const KEY = 'focusflow-data-v1';
+const KEY_PREFIX = 'focusflow-data-v1';
 const today = () => new Date().toISOString().slice(0, 10);
 const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const defaultData: AppData = {
@@ -37,11 +37,17 @@ const defaultData: AppData = {
   settings: { name: 'Your name', avatar: 'YN', theme: 'light', pomodoro: 25, breakMinutes: 5, waterGoal: 8, notifications: false, environment: 'Rain on glass', volume: 55 },
 };
 
-function readData(): AppData {
+function readData(key: string, initialName: string): AppData {
   try {
-    const saved = localStorage.getItem(KEY);
-    if (!saved) return defaultData;
-    return { ...defaultData, ...JSON.parse(saved), settings: { ...defaultData.settings, ...JSON.parse(saved).settings } };
+    const saved = localStorage.getItem(key);
+    if (!saved) {
+      return {
+        ...defaultData,
+        settings: { ...defaultData.settings, name: initialName || defaultData.settings.name },
+      };
+    }
+    const parsed = JSON.parse(saved);
+    return { ...defaultData, ...parsed, settings: { ...defaultData.settings, ...parsed.settings } };
   } catch { return defaultData; }
 }
 
@@ -73,9 +79,10 @@ interface Store extends AppData {
 }
 const DataContext = createContext<Store | null>(null);
 
-export function DataProvider({ children }: { children: ReactNode }) {
-  const [data, setData] = useState<AppData>(readData);
-  useEffect(() => { localStorage.setItem(KEY, JSON.stringify(data)); }, [data]);
+export function DataProvider({ children, userId, initialName }: { children: ReactNode; userId: string; initialName: string }) {
+  const storageKey = `${KEY_PREFIX}-${userId}`;
+  const [data, setData] = useState<AppData>(() => readData(storageKey, initialName));
+  useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(data)); }, [data, storageKey]);
   useEffect(() => {
     document.documentElement.classList.toggle('dark', data.settings.theme === 'dark');
   }, [data.settings.theme]);

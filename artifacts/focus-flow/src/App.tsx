@@ -1,7 +1,67 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from 'react';
+import { ClerkProvider, SignIn, SignUp, Show, useClerk, useUser } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { shadcn } from '@clerk/themes';
 import { CalendarDays, Check, ChevronLeft, ChevronRight, Circle, Clock3, Droplets, ExternalLink, FolderKanban, GripVertical, History, LayoutDashboard, ListChecks, Moon, MoreHorizontal, Music2, Pause, Pencil, Play, Plus, RotateCcw, Search, Settings, Sparkles, Sun, Target, Trash2, Trophy, Volume2, X, Zap } from 'lucide-react';
-import { Link, Route, Switch, useLocation } from 'wouter';
+import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
 import { DataProvider, categories, dateKey, formatDate, initials, useData, type Activity, type Category, type Exercise, type Priority, type Project, type ProjectStatus, type Task } from '@/lib/store';
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+if (!clerkPubKey) {
+  throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the environment.');
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: 'clerk',
+  options: {
+    logoPlacement: 'inside' as const,
+    logoLinkUrl: basePath || '/',
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: '#ee715d',
+    colorForeground: '#172433',
+    colorMutedForeground: '#536273',
+    colorDanger: '#bd5347',
+    colorBackground: '#fffdf9',
+    colorInput: '#fffdf9',
+    colorInputForeground: '#172433',
+    colorNeutral: '#e5e2db',
+    fontFamily: 'DM Sans, sans-serif',
+    borderRadius: '0.75rem',
+  },
+  elements: {
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-[#fffdf9] rounded-2xl w-[440px] max-w-full overflow-hidden shadow-xl',
+    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    headerTitle: 'text-[#172433] font-semibold',
+    headerSubtitle: 'text-[#536273]',
+    socialButtonsBlockButtonText: 'text-[#172433]',
+    formFieldLabel: 'text-[#172433]',
+    footerActionLink: 'text-[#bd5347] font-semibold',
+    footerActionText: 'text-[#536273]',
+    dividerText: 'text-[#536273]',
+    identityPreviewEditButton: 'text-[#bd5347]',
+    formFieldSuccessText: 'text-[#326550]',
+    alertText: 'text-[#bd5347]',
+    logoBox: 'mb-2',
+    logoImage: 'max-h-10',
+    socialButtonsBlockButton: 'border-[#e5e2db] bg-[#fffdf9]',
+    formButtonPrimary: 'bg-[#ee715d] hover:bg-[#bd5347] text-[#fffaf4]',
+    formFieldInput: 'border-[#e5e2db] bg-[#fffdf9] text-[#172433]',
+    footerAction: 'bg-transparent',
+    dividerLine: 'bg-[#e5e2db]',
+    alert: 'border-[#e9beb8] bg-[#fff5f2]',
+    otpCodeFieldInput: 'border-[#e5e2db] bg-[#fffdf9] text-[#172433]',
+    formFieldRow: 'mb-4',
+    main: 'bg-transparent',
+  },
+};
 
 const nav = [
   { href: '/', label: 'Today', icon: LayoutDashboard },
@@ -29,7 +89,70 @@ function findOverlaps(activities: Activity[], date: string, start: string, durat
 }
 
 function App() {
-  return <DataProvider><Shell /></DataProvider>;
+  return <WouterRouter base={basePath}><ClerkRoutes /></WouterRouter>;
+}
+
+function ClerkRoutes() {
+  const [, setLocation] = useLocation();
+  return <ClerkProvider
+    publishableKey={clerkPubKey}
+    proxyUrl={clerkProxyUrl}
+    appearance={clerkAppearance}
+    signInUrl={`${basePath}/sign-in`}
+    signUpUrl={`${basePath}/sign-up`}
+    localization={{
+      signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to return to your flow' } },
+      signUp: { start: { title: 'Create your FocusFlow account', subtitle: 'Keep your days in one private space' } },
+    }}
+    routerPush={(to) => setLocation(stripBase(to))}
+    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+  >
+    <Switch>
+      <Route path="/sign-in/*?" component={SignInPage} />
+      <Route path="/sign-up/*?" component={SignUpPage} />
+      <Route path="/" component={HomeRoute} />
+      <Route component={ProtectedApp} />
+    </Switch>
+  </ClerkProvider>;
+}
+
+function stripBase(path: string) {
+  return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
+}
+
+function AuthLoading() {
+  return <div className="auth-page"><div className="auth-loading"><span className="brand-mark" /><p>Preparing your private space…</p></div></div>;
+}
+
+function SignInPage() {
+  return <div className="auth-page"><SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`} /></div>;
+}
+
+function SignUpPage() {
+  return <div className="auth-page"><SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`} /></div>;
+}
+
+function HomeRoute() {
+  const { isLoaded, isSignedIn } = useUser();
+  if (!isLoaded) return <AuthLoading />;
+  if (isSignedIn) return <Redirect to="/dashboard" />;
+  return <LandingPage />;
+}
+
+function ProtectedApp() {
+  const { isLoaded, isSignedIn, user } = useUser();
+  if (!isLoaded) return <AuthLoading />;
+  if (!isSignedIn || !user) return <Redirect to="/" />;
+  const displayName = user.firstName || user.username || user.emailAddresses[0]?.emailAddress?.split('@')[0] || 'Your name';
+  return <DataProvider userId={user.id} initialName={displayName}><Shell /></DataProvider>;
+}
+
+function LandingPage() {
+  return <div className="landing-page"><div className="landing-orbit landing-orbit-one" /><div className="landing-orbit landing-orbit-two" /><header className="landing-header"><Link href="/" className="brand"><span className="brand-mark" /><span className="brand-name">FocusFlow</span></Link><div className="landing-actions"><Link href="/sign-in" className="soft-button">Sign in</Link><Link href="/sign-up" className="primary-button">Create account</Link></div></header><main className="landing-main"><div className="landing-copy"><div className="eyebrow">A calmer way to get things done</div><h1>Give your attention somewhere to land.</h1><p>FocusFlow connects the little pieces of a productive day: capture a task, shape the time, get into focus, and see the progress you actually made.</p><div className="landing-actions"><Link href="/sign-up" className="primary-button">Start your flow <ArrowRightIcon /></Link><Link href="/sign-in" className="landing-text-link">Already have an account? Sign in</Link></div></div><div className="landing-preview"><div className="preview-topline"><span className="tag">Today</span><span className="tiny">Your private workspace</span></div><div className="preview-heading">A little room to move.</div><div className="preview-progress"><span /><span /><span /><span /></div><div className="preview-task"><span className="preview-dot coral-dot" /><div><strong>Outline the project brief</strong><small>Study · 25 minutes</small></div><Check size={16} /></div><div className="preview-task"><span className="preview-dot mint-dot" /><div><strong>Walk between meetings</strong><small>Personal · 20 minutes</small></div><span className="preview-time">3:30 PM</span></div><div className="preview-note">Write <span>→</span> Schedule <span>→</span> Focus <span>→</span> Complete</div></div></main><footer className="landing-footer"><span>Private by default</span><span>Works offline in your browser</span><span>Built for real days</span></footer></div>;
+}
+
+function ArrowRightIcon() {
+  return <span aria-hidden="true">→</span>;
 }
 
 function Shell() {
@@ -78,7 +201,7 @@ function Shell() {
         <div className="search" onFocus={() => setSearchOpen(true)} data-testid="search-global"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search your flow..." data-testid="input-global-search" /><button className="icon-button" style={{ display: search ? 'inline-flex' : 'none', border: 0 }} onClick={() => setSearch('')} aria-label="Clear search" data-testid="button-clear-search"><X size={14} /></button>
           {searchOpen && search && <div style={{ position: 'absolute', top: 52, width: 'min(360px, calc(100vw - 32px))', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: 'var(--shadow)', padding: 7, zIndex: 20 }}>{results.length ? results.map((result, index) => <Link key={`${result.type}-${index}`} href={result.href} onClick={() => { setSearchOpen(false); setSearch(''); }} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 9px', borderRadius: 8, fontSize: 12 }} data-testid={`search-result-${index}`}><span>{result.label}</span><span className="tiny">{result.type}</span></Link>) : <div className="tiny" style={{ padding: 10 }}>No matches yet. Add it to your flow first.</div>}</div>}
         </div>
-        <div className="top-actions"><Link href="/settings" className="icon-button" aria-label="Settings" data-testid="button-top-settings"><Settings size={16} /></Link><Link href="/profile" className="soft-button" data-testid="button-top-profile"><span className="avatar" style={{ width: 22, height: 22, fontSize: 9 }}>{initials(data.settings.name)}</span>{data.settings.name}</Link></div>
+       <div className="top-actions"><Link href="/settings" className="icon-button" aria-label="Settings" data-testid="button-top-settings"><Settings size={16} /></Link><Link href="/profile" className="soft-button" data-testid="button-top-profile"><span className="avatar" style={{ width: 22, height: 22, fontSize: 9 }}>{initials(data.settings.name)}</span>{data.settings.name}</Link><LogoutButton /></div>
       </header>
       <div onClick={() => searchOpen && setSearchOpen(false)}><Switch>
         <Route path="/" component={Dashboard} /><Route path="/dashboard" component={Dashboard} /><Route path="/inbox" component={Inbox} /><Route path="/schedule" component={Schedule} /><Route path="/study" component={Study} /><Route path="/workout" component={Workout} /><Route path="/work" component={Work} /><Route path="/analytics" component={Analytics} /><Route path="/history" component={HistoryPage} /><Route path="/profile" component={Profile} /><Route path="/settings" component={SettingsPage} /><Route component={NotFound} />
@@ -87,6 +210,11 @@ function Shell() {
     <MusicDock />
     <nav className="mobile-nav">{nav.slice(0, 5).map(({ href, label, icon: Icon }) => <Link href={href} key={href} className={location === href ? 'active' : ''} data-testid={`mobile-link-${label.toLowerCase().replaceAll(' ', '-')}`}><Icon size={17} /><span>{label === 'Task inbox' ? 'Inbox' : label === 'Focus room' ? 'Focus' : label}</span></Link>)}</nav>
   </div>;
+}
+
+function LogoutButton() {
+  const { signOut } = useClerk();
+  return <button type="button" className="soft-button logout-button" onClick={() => signOut({ redirectUrl: basePath || '/' })} data-testid="button-sign-out">Sign out</button>;
 }
 
 function MusicDock() {
