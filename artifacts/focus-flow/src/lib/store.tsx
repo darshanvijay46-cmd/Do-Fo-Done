@@ -22,20 +22,23 @@ export interface TimerState {
 }
 export interface Settings {
   name: string; avatar: string; theme: 'light' | 'dark'; pomodoro: number; breakMinutes: number;
-  waterGoal: number; notifications: boolean; environment: string; volume: number;
+  waterGoal: number; notifications: boolean; environment: string; volume: number; musicEnabled: boolean;
 }
 export interface MusicTrack { id: string; name: string; type: string; dataUrl: string; }
+export interface YouTubeTrack { videoId: string; title: string; channel: string; thumbnail: string; }
 export interface AppData {
   tasks: Task[]; activities: Activity[]; sessions: FocusSession[]; notes: StudyNote[];
-  exercises: Exercise[]; projects: Project[]; water: Record<string, number>; musicTracks: MusicTrack[]; settings: Settings; timer?: TimerState;
+  exercises: Exercise[]; projects: Project[]; water: Record<string, number>; musicTracks: MusicTrack[];
+  youtubeQueue: YouTubeTrack[]; youtubeFavorites: YouTubeTrack[]; youtubeRecent: YouTubeTrack[]; youtubeCurrent?: YouTubeTrack;
+  settings: Settings; timer?: TimerState;
 }
 
 const KEY_PREFIX = 'focusflow-data-v1';
 const today = () => new Date().toISOString().slice(0, 10);
 const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 const defaultData: AppData = {
-  tasks: [], activities: [], sessions: [], notes: [], exercises: [], projects: [], water: {}, musicTracks: [],
-  settings: { name: 'Your name', avatar: 'YN', theme: 'light', pomodoro: 25, breakMinutes: 5, waterGoal: 8, notifications: false, environment: 'Rain on glass', volume: 55 },
+  tasks: [], activities: [], sessions: [], notes: [], exercises: [], projects: [], water: {}, musicTracks: [], youtubeQueue: [], youtubeFavorites: [], youtubeRecent: [],
+  settings: { name: 'Your name', avatar: 'YN', theme: 'light', pomodoro: 25, breakMinutes: 5, waterGoal: 8, notifications: false, environment: 'Rain on glass', volume: 55, musicEnabled: false },
 };
 
 function readData(key: string, initialName: string): AppData {
@@ -71,6 +74,11 @@ interface Store extends AppData {
   deleteProject: (id: string) => void;
   addMusicTrack: (track: Omit<MusicTrack, 'id'>) => void;
   deleteMusicTrack: (id: string) => void;
+  setMusicEnabled: (enabled: boolean) => void;
+  setYoutubeQueue: (tracks: YouTubeTrack[]) => void;
+  setYoutubeCurrent: (track?: YouTubeTrack) => void;
+  toggleYoutubeFavorite: (track: YouTubeTrack) => void;
+  addYoutubeRecent: (track: YouTubeTrack) => void;
   setWater: (date: string, count: number) => void;
   updateSettings: (patch: Partial<Settings>) => void;
   startTimer: (taskId?: string, mode?: 'focus' | 'break' | 'stopwatch') => void;
@@ -112,6 +120,11 @@ export function DataProvider({ children, userId, initialName }: { children: Reac
       deleteProject: (id) => patch((d) => { d.projects = d.projects.filter((p) => p.id !== id); d.tasks = d.tasks.map((t) => t.projectId === id ? { ...t, projectId: undefined } : t); }),
       addMusicTrack: (track) => patch((d) => { d.musicTracks = [...d.musicTracks, { ...track, id: uid('music') }]; }),
       deleteMusicTrack: (id) => patch((d) => { d.musicTracks = d.musicTracks.filter((track) => track.id !== id); }),
+      setMusicEnabled: (enabled) => patch((d) => { d.settings = { ...d.settings, musicEnabled: enabled }; }),
+      setYoutubeQueue: (tracks) => patch((d) => { d.youtubeQueue = tracks; }),
+      setYoutubeCurrent: (track) => patch((d) => { d.youtubeCurrent = track; }),
+      toggleYoutubeFavorite: (track) => patch((d) => { d.youtubeFavorites = d.youtubeFavorites.some((item) => item.videoId === track.videoId) ? d.youtubeFavorites.filter((item) => item.videoId !== track.videoId) : [track, ...d.youtubeFavorites]; }),
+      addYoutubeRecent: (track) => patch((d) => { d.youtubeRecent = [track, ...d.youtubeRecent.filter((item) => item.videoId !== track.videoId)].slice(0, 10); }),
       setWater: (date, count) => patch((d) => { d.water = { ...d.water, [date]: Math.max(0, count) }; }),
       updateSettings: (change) => patch((d) => { d.settings = { ...d.settings, ...change }; }),
       startTimer: (taskId, mode = 'focus') => patch((d) => {

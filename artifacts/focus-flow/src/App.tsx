@@ -4,11 +4,30 @@ import { publishableKeyFromHost } from '@clerk/react/internal';
 import { shadcn } from '@clerk/themes';
 import { Blocks, CalendarDays, Check, ChevronLeft, ChevronRight, Circle, Clock3, Droplets, ExternalLink, FolderKanban, GripVertical, History, LayoutDashboard, ListChecks, Moon, MoreHorizontal, Music2, Pause, Pencil, Play, Plus, RotateCcw, Search, Settings, Sparkles, Sun, Target, Trash2, Trophy, Upload, Volume2, X, Zap } from 'lucide-react';
 import { Link, Redirect, Route, Router as WouterRouter, Switch, useLocation } from 'wouter';
-import { DataProvider, categories, dateKey, formatDate, initials, useData, type Activity, type Category, type Exercise, type MusicTrack, type Priority, type Project, type ProjectStatus, type Task } from '@/lib/store';
+import { DataProvider, categories, dateKey, formatDate, initials, useData, type Activity, type Category, type Exercise, type MusicTrack, type Priority, type Project, type ProjectStatus, type Task, type YouTubeTrack } from '@/lib/store';
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
 const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+type YouTubePlayerApi = {
+  destroy: () => void;
+  cueVideoById: (videoId: string) => void;
+  playVideo: () => void;
+  pauseVideo: () => void;
+  getPlayerState: () => number;
+  setVolume: (volume: number) => void;
+};
+
+declare global {
+  interface Window {
+    YT?: {
+      Player: new (element: HTMLElement, options: { videoId: string; playerVars?: Record<string, number>; events?: { onReady?: () => void; onStateChange?: (event: { data: number }) => void; onError?: () => void } }) => YouTubePlayerApi;
+      PlayerState?: { ENDED: number; PLAYING: number; PAUSED: number };
+    };
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
 
 if (!clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the environment.');
