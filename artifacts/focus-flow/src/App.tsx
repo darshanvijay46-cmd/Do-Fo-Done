@@ -17,17 +17,35 @@ type YouTubePlayerApi = {
   pauseVideo: () => void;
   getPlayerState: () => number;
   setVolume: (volume: number) => void;
+  loadVideoById: (videoId: string) => void;
 };
-
 declare global {
   interface Window {
     YT?: {
-      Player: new (element: HTMLElement, options: { videoId: string; playerVars?: Record<string, number>; events?: { onReady?: () => void; onStateChange?: (event: { data: number }) => void; onError?: () => void } }) => YouTubePlayerApi;
-      PlayerState?: { ENDED: number; PLAYING: number; PAUSED: number };
+      Player: new (
+        element: HTMLElement,
+        options: {
+          height?: string;
+          width?: string;
+          videoId?: string;
+          playerVars?: Record<string, number | string>;
+          events?: {
+            onReady?: (event: { target: YouTubePlayerApi }) => void;
+            onStateChange?: (event: {
+              data: number;
+              target: YouTubePlayerApi;
+            }) => void;
+            onError?: (event: unknown) => void;
+          };
+        }
+      ) => YouTubePlayerApi;
     };
+
     onYouTubeIframeAPIReady?: () => void;
   }
 }
+
+
 
 if (!clerkPubKey) {
   throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in the environment.');
@@ -236,28 +254,436 @@ function LogoutButton() {
   const { signOut } = useClerk();
   return <button type="button" className="soft-button logout-button" onClick={() => signOut({ redirectUrl: basePath || '/' })} data-testid="button-sign-out">Sign out</button>;
 }
-
 function MusicDock() {
   const data = useData();
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [unavailable, setUnavailable] = useState(false);
+
+  const [musicOn, setMusicOn] = useState(
+    () => localStorage.getItem('focusflow-music-on') === 'true'
+  );
+
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<YouTubeTrack[]>([]);
+  const [currentTrack, setCurrentTrack] = useState<YouTubeTrack | null>(null);
+  const [currentIndex, setCurrentIndex] = useState(-1);
+
+  const [searching, setSearching] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [trackId, setTrackId] = useState(data.musicTracks[0]?.id ?? 'default');
-  const customTrack = data.musicTracks.find((track) => track.id === trackId) ?? data.musicTracks[0];
-  const source = customTrack?.dataUrl ?? 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+  const [error, setError] = useState('');
+
+  const playerRef = useRef<YouTubePlayerApi | null>(null);
+  const playerElementRef = useRef<HTMLDivElement>(null);
+
+  // Remember Music ON/OFF
   useEffect(() => {
-    if (data.musicTracks.length && trackId === 'default') setTrackId(data.musicTracks[0].id);
-    if (trackId !== 'default' && !data.musicTracks.some((track) => track.id === trackId)) setTrackId(data.musicTracks[0]?.id ?? 'default');
-  }, [data.musicTracks, trackId]);
+    localStorage.setItem('focusflow-music-on', String(musicOn));
+
+    if (!musicOn) {
+      playerRef.current?.pauseVideo();
+      setPlaying(false);
+      setSearchOpen(false);
+    }
+  }, [musicOn]);
+
+  // Keep volume synced with FocusFlow settings
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = data.settings.volume / 100;
-  }, [data.settings.volume, source]);
-  return <div className="music-dock" data-testid="music-player">
-    <Music2 size={17} color="var(--coral)" />
-    <div className="music-dock-copy"><strong>{unavailable ? 'Music unavailable' : playing ? 'Now playing' : customTrack?.name ?? 'Focus soundtrack'}</strong><span>{unavailable ? 'Check the file or your connection' : customTrack ? 'From your device' : 'SoundHelix · free example track'}</span></div>
-    {data.musicTracks.length > 1 && <select className="music-track-select" value={customTrack?.id ?? 'default'} onChange={(event) => { setUnavailable(false); setPlaying(false); setTrackId(event.target.value); }} aria-label="Choose music track" data-testid="select-music-track"><option value="default">Focus soundtrack</option>{data.musicTracks.map((track) => <option key={track.id} value={track.id}>{track.name}</option>)}</select>}
-    <audio key={source} ref={audioRef} controls preload="none" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onError={() => { setUnavailable(true); setPlaying(false); }} aria-label="Focus soundtrack"><source src={source} type={customTrack?.type || 'audio/mpeg'} /></audio>
-  </div>;
+    playerRef.current?.setVolume(data.settings.volume);
+  }, [data.settings.volume]);
+
+  // Load YouTube IFrame API
+  useEffect(() => {
+    if (!musicOn) return;
+
+    const createPlayer = () => {
+      if (!playerElementRef.current || playerRef.current) return;
+
+      if (!window.YT?.Player) return;
+
+      playerRef.current = new window.YT.Player(playerElementRef.current, {
+        height: '200',
+        width: '320',
+        playerVars: {
+          controls: 1,
+          rel: 0,
+          playsinline: 1,
+        },
+        events: {
+          onReady: (event) => {
+            event.target.setVolume(data.settings.volume);
+          },
+
+          onStateChange: (event) => {
+            setPlaying(event.data === 1);
+          },
+
+          onError: () => {
+            setError(
+              "This track isn't available for playback here. Try another result."
+            );
+            setPlaying(false);
+          },
+        },
+      });
+    };
+
+    if (window.YT?.Player) {
+      createPlayer();
+      return;
+    }
+
+    if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      document.body.appendChild(script);
+    }
+
+    const oldCallback = window.onYouTubeIframeAPIReady;
+
+    window.onYouTubeIframeAPIReady = () => {
+      oldCallback?.();
+      createPlayer();
+    };
+
+    return () => {
+      // Don't destroy the player during normal React re-renders.
+    };
+  }, [musicOn]);
+
+  async function searchMusic(event?: React.FormEvent) {
+    event?.preventDefault();
+
+    const cleanQuery = query.trim();
+
+    if (!cleanQuery) return;
+
+    setSearching(true);
+    setError('');
+
+    try {
+      const response = await fetch(
+        `${window.location.origin}/api/music/search?q=${encodeURIComponent(cleanQuery)}`
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        console.error('Music search failed:', response.status, text);
+        throw new Error(`Search failed: ${response.status}`);
+      }
+
+      const payload = await response.json();
+
+      setResults(payload.results ?? []);
+  } catch (err) {
+    console.error('Music search error:', err);
+    setError('Music search is temporarily unavailable.');
+  } finally {
+    setSearching(false);
+  }
+  }
+
+  function playTrack(track: YouTubeTrack, index: number) {
+    setCurrentTrack(track);
+    setCurrentIndex(index);
+    setError('');
+
+    if (!playerRef.current) {
+      setError('Music player is still loading. Try again in a moment.');
+      return;
+    }
+
+    playerRef.current.loadVideoById(track.videoId);
+    playerRef.current.setVolume(data.settings.volume);
+
+    setPlaying(true);
+    setSearchOpen(false);
+  }
+
+  function togglePlayback() {
+    if (!playerRef.current || !currentTrack) return;
+
+    if (playing) {
+      playerRef.current.pauseVideo();
+    } else {
+      playerRef.current.playVideo();
+    }
+  }
+
+  function nextTrack() {
+    if (!results.length) return;
+
+    const nextIndex =
+      currentIndex >= results.length - 1 ? 0 : currentIndex + 1;
+
+    playTrack(results[nextIndex], nextIndex);
+  }
+
+  function previousTrack() {
+    if (!results.length) return;
+
+    const previousIndex =
+      currentIndex <= 0 ? results.length - 1 : currentIndex - 1;
+
+    playTrack(results[previousIndex], previousIndex);
+  }
+
+  function silenceMode() {
+    playerRef.current?.pauseVideo();
+    setPlaying(false);
+    setMusicOn(false);
+  }
+
+  return (
+    <>
+      {/* MUSIC OFF */}
+      {!musicOn && (
+        <div className="music-dock" data-testid="music-player">
+          <Music2 size={17} color="var(--coral)" />
+
+          <div className="music-dock-copy">
+            <strong>Music off</strong>
+            <span>Distraction-free study</span>
+          </div>
+
+          <button
+            className="button secondary"
+            onClick={() => setMusicOn(true)}
+          >
+            <Play size={15} />
+            Music On
+          </button>
+        </div>
+      )}
+
+      {/* MUSIC ON */}
+      {musicOn && (
+        <div className="music-dock" data-testid="music-player">
+
+          {currentTrack?.thumbnail ? (
+            <img
+              src={currentTrack.thumbnail}
+              alt=""
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: 8,
+                objectFit: 'cover',
+              }}
+            />
+          ) : (
+            <Music2 size={20} color="var(--coral)" />
+          )}
+
+          <div className="music-dock-copy">
+            <strong>
+              {currentTrack?.title ?? 'Choose some music'}
+            </strong>
+
+            <span>
+              {currentTrack?.channel ?? 'Search YouTube'}
+            </span>
+          </div>
+
+          {/* PREVIOUS */}
+
+          <button
+            className="icon-button"
+            onClick={previousTrack}
+            disabled={!currentTrack}
+            title="Previous"
+          >
+            <ChevronLeft size={18} />
+          </button>
+
+          {/* PLAY / PAUSE */}
+
+          <button
+            className="icon-button"
+            onClick={togglePlayback}
+            disabled={!currentTrack}
+            title={playing ? 'Pause' : 'Play'}
+          >
+            {playing ? (
+              <Pause size={18} />
+            ) : (
+              <Play size={18} />
+            )}
+          </button>
+
+          {/* NEXT */}
+
+          <button
+            className="icon-button"
+            onClick={nextTrack}
+            disabled={!currentTrack}
+            title="Next"
+          >
+            <ChevronRight size={18} />
+          </button>
+
+          {/* SEARCH */}
+
+          <button
+            className="icon-button"
+            onClick={() => setSearchOpen(!searchOpen)}
+            title="Search music"
+          >
+            <Search size={18} />
+          </button>
+
+          {/* SILENCE */}
+
+          <button
+            className="icon-button"
+            onClick={silenceMode}
+            title="Silence mode"
+          >
+            <Volume2 size={18} />
+          </button>
+
+          {/* HIDDEN/COMPACT YOUTUBE PLAYER AREA */}
+
+          <div
+            style={{
+              position: 'absolute',
+              width: 320,
+              height: 200,
+              left: -10000,
+              top: 0,
+            }}
+          >
+            <div ref={playerElementRef} />
+          </div>
+
+          {/* SEARCH PANEL */}
+
+          {searchOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: '75px',
+                right: 0,
+                width: '360px',
+                maxHeight: '480px',
+                overflowY: 'auto',
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                borderRadius: '18px',
+                padding: '14px',
+                boxShadow: '0 20px 60px rgba(0,0,0,.18)',
+                zIndex: 100,
+              }}
+            >
+              <form
+                onSubmit={searchMusic}
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  marginBottom: 12,
+                }}
+              >
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="Search songs or artists..."
+                  autoFocus
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                  }}
+                />
+
+                <button
+                  type="submit"
+                  className="icon-button"
+                  disabled={searching}
+                >
+                  <Search size={17} />
+                </button>
+              </form>
+
+              {searching && (
+                <p style={{ fontSize: 13 }}>
+                  Searching...
+                </p>
+              )}
+
+              {error && (
+                <p
+                  style={{
+                    fontSize: 13,
+                    color: 'var(--coral)',
+                  }}
+                >
+                  {error}
+                </p>
+              )}
+
+              {!searching &&
+                results.map((track, index) => (
+                  <button
+                    key={track.videoId}
+                    onClick={() => playTrack(track, index)}
+                    style={{
+                      width: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 10,
+                      border: 0,
+                      background: 'transparent',
+                      padding: '8px',
+                      borderRadius: 10,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                    }}
+                  >
+                    <img
+                      src={track.thumbnail}
+                      alt=""
+                      style={{
+                        width: 70,
+                        height: 42,
+                        objectFit: 'cover',
+                        borderRadius: 7,
+                      }}
+                    />
+
+                    <div
+                      style={{
+                        minWidth: 0,
+                        flex: 1,
+                      }}
+                    >
+                      <strong
+                        style={{
+                          display: 'block',
+                          fontSize: 13,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {track.title}
+                      </strong>
+
+                      <span
+                        style={{
+                          fontSize: 12,
+                          opacity: 0.7,
+                        }}
+                      >
+                        {track.channel}
+                      </span>
+                    </div>
+
+                    <Play size={15} />
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
 }
 
 function PageHeading({ eyebrow, title, description, action }: { eyebrow: string; title: string; description?: string; action?: ReactNode }) {
