@@ -8,8 +8,6 @@ import { DataProvider, categories, dateKey, formatDate, initials, useData, type 
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
 const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
-
 type YouTubePlayerApi = {
   destroy: () => void;
   cueVideoById: (videoId: string) => void;
@@ -134,7 +132,7 @@ function ClerkRoutes() {
   const [, setLocation] = useLocation();
   return <ClerkProvider
     publishableKey={clerkPubKey}
-    proxyUrl={clerkProxyUrl}
+
     appearance={clerkAppearance}
     signInUrl={`${basePath}/sign-in`}
     signUpUrl={`${basePath}/sign-up`}
