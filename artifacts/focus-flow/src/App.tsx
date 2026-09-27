@@ -124,9 +124,36 @@ function findOverlaps(activities: Activity[], date: string, start: string, durat
 }
 
 function App() {
-  return <WouterRouter base={basePath}><ClerkRoutes /></WouterRouter>;
+  return (
+    <WouterRouter base={basePath}>
+      <ClerkRoutes />
+    </WouterRouter>
+  );
 }
 
+function ClerkTest() {
+  const { isLoaded, isSignedIn, user } = useUser();
+
+  if (!isLoaded) {
+    return <div style={{ padding: 40 }}>Loading Clerk...</div>;
+  }
+
+  if (!isSignedIn) {
+    return (
+      <div style={{ padding: 40 }}>
+        <h1>FocusFlow</h1>
+        <SignIn />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: 40 }}>
+      <h1>Clerk works 🎉</h1>
+      <p>Signed in as {user?.primaryEmailAddress?.emailAddress}</p>
+    </div>
+  );
+}
 function ClerkRoutes() {
   const [, setLocation] = useLocation();
   return <ClerkProvider
