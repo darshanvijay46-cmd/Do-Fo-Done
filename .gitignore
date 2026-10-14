@@ -2,6 +2,7 @@
 
 # compiled output
 dist
+build
 tmp
 out-tsc
 *.tsbuildinfo
@@ -23,9 +24,9 @@ node_modules
 # IDE - VSCode
 .vscode/*
 !.vscode/settings.json
-!.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
+.vscode/tasks.json
 
 # misc
 /.sass-cache
@@ -40,6 +41,22 @@ testem.log
 # System Files
 .DS_Store
 Thumbs.db
+
+# Environment files and local credentials (all directories)
+.env
+.env.*
+!.env.example
+
+# Archives and local backup files
+*.zip
+*.bak
+*.backup
+*.old
+*.orig
+*~
+
+# Logs
+*.log
 
 .cursor/rules/nx-rules.mdc
 .github/instructions/nx.instructions.md
