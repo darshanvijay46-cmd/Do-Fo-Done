@@ -222,8 +222,14 @@ function AppRoutes() {
   const [location] = useLocation();
   const { isLoaded, isSignedIn, user } = useUser();
 
-  if (location.startsWith('/sign-in')) return <SignInPage />;
-  if (location.startsWith('/sign-up')) return <SignUpPage />;
+  if (location.startsWith('/sign-in')) {
+    if (isLoaded && isSignedIn) return <Redirect to="/" />;
+    return <SignInPage />;
+  }
+  if (location.startsWith('/sign-up')) {
+    if (isLoaded && isSignedIn) return <Redirect to="/" />;
+    return <SignUpPage />;
+  }
   if (!isLoaded) return <AuthLoading />;
   if (!isSignedIn || !user) return location === '/' ? <LandingPage /> : <Redirect to="/" />;
 
