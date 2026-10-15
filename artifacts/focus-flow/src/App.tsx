@@ -9,6 +9,10 @@ import { StickyWorkspace } from '@/components/sticky-workspace';
 import { FocusStage } from '@/components/focus-timer';
 import { Blocks, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Circle, Clock3, Droplets, Dumbbell, ExternalLink, Flame, FolderKanban, FolderPlus, GlassWater, GripVertical, History, LayoutDashboard, ListChecks, Maximize2, Minus, Moon, MoreHorizontal, Music2, Pause, Pencil, Play, Plus, RotateCcw, Search, Settings, Sparkles, StickyNote as StickyNoteIcon, Sun, Target, Trash2, TrendingUp, Trophy, Upload, Volume2, VolumeX, X, Zap, ArrowRight, Activity as ActivityIcon, SlidersHorizontal, Filter, Command } from 'lucide-react';
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const apiBaseUrl = (
+  import.meta.env.VITE_API_BASE_URL ??
+  (import.meta.env.DEV ? '' : 'https://do-fo-done-api.onrender.com')
+).replace(/\/+$/, '');
 const localDateKey = (date = new Date()) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 const dateFromKey = (key: string) => new Date(`${key}T12:00:00`);
 const workoutTitlePattern = /\b(gym workout|workout session|exercise session|training session)\b/i;
@@ -786,7 +790,7 @@ function MusicDock() {
 
     try {
       const response = await fetch(
-        `${window.location.origin}/api/music/search?q=${encodeURIComponent(
+        `${apiBaseUrl}/api/music/search?q=${encodeURIComponent(
           cleanQuery
         )}`
       );
